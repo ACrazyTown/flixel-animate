@@ -26,8 +26,16 @@ class RenderTexture implements IFlxDestroyable
 	public var antialiasing:Bool = false;
 	public var graphic(default, null):FlxGraphic;
 
+	/**
+	 * If enabled, the internal texture will intentionally round up to the 
+	 * nearest power of two in an attempt to avoid texture reallocations when resizing.
+	 * 
+	 * If you're not going to resize the texture often it is best to disable this
+	 * to avoid extra memory use.
+	 */
+	public var usePowerOfTwo:Bool = true;
+
 	var _renderer:OpenGLRenderer;
-	var _bitmaps:Map<String, BitmapData>;
 	var _currentBitmap:BitmapData;
 	var _camera:FlxCamera;
 	var _matrix:FlxMatrix;
@@ -38,7 +46,6 @@ class RenderTexture implements IFlxDestroyable
 		_renderer.__worldTransform = new Matrix();
 		_renderer.__worldColorTransform = new ColorTransform();
 
-		_bitmaps = [];
 		_camera = new FlxCamera();
 		_matrix = new FlxMatrix();
 
@@ -50,14 +57,13 @@ class RenderTexture implements IFlxDestroyable
 		_renderer.__cleanup();
 		_renderer = null;
 
-		for (bitmap in _bitmaps.iterator())
+		if (_currentBitmap != null)
 		{
-			if (bitmap.__texture != null)
-				bitmap.__texture.dispose();
-			bitmap.dispose();
-		}
+			if (_currentBitmap.__texture != null)
+				_currentBitmap.__texture.dispose();
 
-		_bitmaps = null;
+			_currentBitmap.dispose();
+		}
 		_currentBitmap = null;
 
 		_camera = FlxDestroyUtil.destroy(_camera);
@@ -130,18 +136,33 @@ class RenderTexture implements IFlxDestroyable
 
 	function _prepareTexture(width:Int, height:Int):Void
 	{
-		var requireTexture = _currentBitmap == null || (_currentBitmap.width != width || _currentBitmap.height != height);
+		var w = usePowerOfTwo ? _powerOfTwo(width) : width;
+		var h = usePowerOfTwo ? _powerOfTwo(height) : height;
+
+		var requireTexture = _currentBitmap == null || (w > _currentBitmap.width || h > _currentBitmap.height);
 		if (!requireTexture)
 			return;
 
-		final id:String = Std.string(width) + 'x' + Std.string(height);
+		if (_currentBitmap != null)
+		{
+			if (_currentBitmap.__texture != null)
+				_currentBitmap.__texture.dispose();
 
-		if (!_bitmaps.exists(id))
-			_bitmaps.set(id, BitmapData.fromTexture(FlxG.stage.context3D.createRectangleTexture(width, height, BGRA, true)));
+			_currentBitmap.dispose();
+		}
 
-		_currentBitmap = _bitmaps.get(id);
+		_currentBitmap = BitmapData.fromTexture(FlxG.stage.context3D.createRectangleTexture(w, h, BGRA, true));
 
 		if (graphic == null)
 			graphic = FlxGraphic.fromBitmapData(_currentBitmap, false, null, false);
+
+	}
+
+	inline function _powerOfTwo(value:Int):Int
+	{
+		var n = 1;
+		while (n < value)
+			n <<= 1;
+		return n;
 	}
 }
